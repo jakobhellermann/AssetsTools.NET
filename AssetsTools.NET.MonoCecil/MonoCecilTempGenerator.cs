@@ -311,6 +311,15 @@ namespace AssetsTools.NET.Extra
                             continue;
                         }
 
+                        // Unity does not serialize multidimensional arrays
+                        // (`int[,]`); only single-dimensional ("vector") arrays.
+                        // A non-vector ArrayType would otherwise be emitted as a
+                        // bogus scalar field (IsVector is false in ReadTypes).
+                        if (f.FieldType is ArrayType at && !at.IsVector)
+                        {
+                            continue;
+                        }
+
                         TypeDefWithSelfRef solidifiedFieldType = parentType.SolidifyType(f.FieldType);
 
                         if (TryGetListOrArrayElement(solidifiedFieldType, out TypeDefWithSelfRef elemType))

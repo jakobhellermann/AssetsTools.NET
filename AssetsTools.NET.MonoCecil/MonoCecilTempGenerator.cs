@@ -46,6 +46,10 @@ namespace AssetsTools.NET.Extra
             }
 
             List<AssetTypeTemplateField> newFields = Read(assemblyPath, nameSpace, className, unityVersion);
+            if (newFields == null)
+            {
+                return null;
+            }
 
             AssetTypeTemplateField newBaseField = baseField.Clone();
             newBaseField.Children.AddRange(newFields);
@@ -65,9 +69,15 @@ namespace AssetsTools.NET.Extra
             bool usingManagedReference = false;
             List<AssetTypeTemplateField> children = new List<AssetTypeTemplateField>();
 
-            RecursiveTypeLoad(
+            // null (not found) is distinct from an empty list (a type that
+            // resolves but has no serialized fields).
+            bool resolved = RecursiveTypeLoad(
                 assembly.MainModule, nameSpace, typeName, children,
                 CommonMonoTemplateHelper.GetSerializationLimit(unityVersion), ref usingManagedReference);
+            if (!resolved)
+            {
+                return null;
+            }
 
             if (usingManagedReference)
             {
@@ -107,7 +117,8 @@ namespace AssetsTools.NET.Extra
             return asmDef;
         }
 
-        private void RecursiveTypeLoad(
+        /// <returns><c>false</c> if the named type could not be resolved.</returns>
+        private bool RecursiveTypeLoad(
             ModuleDefinition module, string nameSpace, string typeName, List<AssetTypeTemplateField> attf,
             int availableDepth, ref bool usingManagedReference)
         {
@@ -119,7 +130,7 @@ namespace AssetsTools.NET.Extra
             {
                 string[] types = typeName.Split('/');
                 type = new TypeReference(nameSpace, types[0], module, module).Resolve();
-                for (int i = 1; i < types.Length; i++)
+                for (int i = 1; i < types.Length && type != null; i++)
                 {
                     typeRef = new TypeReference("", types[i], module, module)
                     {
@@ -134,7 +145,16 @@ namespace AssetsTools.NET.Extra
                 type = typeRef.Resolve();
             }
 
+            // The named type may not exist in the loaded assemblies (e.g. a
+            // MonoScript referencing an editor-only or version-mismatched type).
+            // Resolve() returns null then; report not-found instead of throwing.
+            if (type == null)
+            {
+                return false;
+            }
+
             RecursiveTypeLoad(type, attf, availableDepth, true, ref usingManagedReference);
+            return true;
         }
 
         private void RecursiveTypeLoad(
@@ -146,8 +166,9 @@ namespace AssetsTools.NET.Extra
                 availableDepth--;
             }
 
-            string baseName = type.typeDef.BaseType.FullName;
-            if (baseName != "System.Object" &&
+            string baseName = type.typeDef.BaseType?.FullName;
+            if (baseName != null &&
+                baseName != "System.Object" &&
                 baseName != "UnityEngine.Object" &&
                 baseName != "UnityEngine.MonoBehaviour" &&
                 baseName != "UnityEngine.ScriptableObject")

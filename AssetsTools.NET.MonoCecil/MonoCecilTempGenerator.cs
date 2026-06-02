@@ -282,6 +282,14 @@ namespace AssetsTools.NET.Extra
                         !f.IsInitOnly &&
                         !f.HasConstant) // field is not public, has exception attribute, readonly, or const
                     {
+                        // Unity does not serialize pointer fields (e.g. `sbyte*`).
+                        // Their element resolves to a primitive, so they would
+                        // otherwise slip through as a primitive field.
+                        if (f.FieldType is PointerType)
+                        {
+                            continue;
+                        }
+
                         TypeDefWithSelfRef solidifiedFieldType = parentType.SolidifyType(f.FieldType);
 
                         if (TryGetListOrArrayElement(solidifiedFieldType, out TypeDefWithSelfRef elemType))
@@ -339,6 +347,13 @@ namespace AssetsTools.NET.Extra
                 // before 2020.1.0 you couldn't have fields of a generic type, so they should be ingored
                 // https://unity.com/releases/editor/whats-new/2020.1.0
                 if (typeDef.HasGenericParameters && unityVersion.major < 2020)
+                {
+                    return false;
+                }
+
+                // IntPtr/UIntPtr report IsPrimitive == true in Cecil, but Unity
+                // does not serialize them, so they must not become fields.
+                if (typeDef.FullName == "System.IntPtr" || typeDef.FullName == "System.UIntPtr")
                 {
                     return false;
                 }
